@@ -1,0 +1,161 @@
+Option Explicit
+
+'----------------------------------------------------------------------------------
+' 設定: 変更が必要なパスやファイル名をここで定義
+'----------------------------------------------------------------------------------
+Const SOURCE_EXCEL_FILE_NAME As String = "sample.xlsm" ' 対象のExcelファイル名
+Const SOURCE_TEXT_FILE_NAME As String = "sample.txt" ' パスワードテキストファイル名
+Const UNIT_LIST_FILE_NAME As String = "unit_list.txt" ' ユニット名テキストファイル名
+Const SOURCE_FOLDER_PATH As String = "C:\Users\austr\OneDrive\デスクトップ\password\" ' ソースファイルがあるフォルダパス
+Const TEMP_FOLDER_NAME As String = "temp_backup" ' 一時フォルダ名（ダウンロードフォルダ内に作成）
+Const FINAL_TARGET_FOLDER_NAME As String = "backup" ' 最終バックアップ先のベースフォルダ名
+Const SHEET_NAME As String = "IP_List" ' 対象シート名
+
+'----------------------------------------------------------------------------------
+' マクロ1: パスワード書き換え
+' 説明: ユニット名テキストを読み込み、D列で一致する行のG列（20行目以降）を更新
+'       空欄行はスキップ、更新した行のみ最後にまとめてMsgBoxで出力
+'----------------------------------------------------------------------------------
+Sub UpdatePassword()
+    Dim fso As Object
+    Dim excelApp As Object
+    Dim wb As Object
+    Dim ws As Object
+    Dim unitFile As Object
+    Dim textFile As Object
+    Dim sourceExcelPath As String
+    Dim sourceTextPath As String
+    Dim unitListPath As String
+    Dim unitName As String
+    Dim textPassword As String
+    Dim excelPassword As String
+    Dim targetRow As Long
+    Dim i As Long
+    Dim msg As String
+    Dim updateLog As String ' 更新した行のログを蓄積
+
+    ' エラーハンドリングの開始
+    On Error GoTo ErrorHandler
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set excelApp = Application ' 現在のExcelアプリケーションを使用
+
+    ' パスの組み立て
+    sourceExcelPath = SOURCE_FOLDER_PATH & SOURCE_EXCEL_FILE_NAME
+    sourceTextPath = SOURCE_FOLDER_PATH & SOURCE_TEXT_FILE_NAME
+    unitListPath = SOURCE_FOLDER_PATH & UNIT_LIST_FILE_NAME
+
+    ' 処理開始メッセージ
+    msg = "パスワード更新を開始します..." & vbCrLf & vbCrLf & _
+          "Excelファイル: " & sourceExcelPath & vbCrLf & _
+          "ユニット名ファイル: " & unitListPath & vbCrLf & _
+          "パスワードファイル: " & sourceTextPath
+    MsgBox msg, vbInformation, "処理開始"
+
+    ' 前提条件の確認: ファイルの存在チェック
+    If Not fso.FileExists(sourceExcelPath) Then
+        msg = "エラー: Excelファイルが見つかりません。" & vbCrLf & sourceExcelPath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+    If Not fso.FileExists(unitListPath) Then
+        msg = "エラー: ユニット名ファイルが見つかりません。" & vbCrLf & unitListPath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+    If Not fso.FileExists(sourceTextPath) Then
+        msg = "エラー: パスワードファイルが見つかりません。" & vbCrLf & sourceTextPath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    ' ユニット名ファイルからユニット名を取得
+    Set unitFile = fso.OpenTextFile(unitListPath, 1) ' 読み込みモード
+    unitName = Trim(unitFile.ReadLine) ' 単一行を読み込み、余白除去
+    unitFile.Close
+
+    ' パスワードファイルからパスワードを取得
+    Set textFile = fso.OpenTextFile(sourceTextPath, 1) ' 読み込みモード
+    textPassword = Trim(textFile.ReadLine) ' 単一行を読み込み、余白除去
+    textFile.Close
+
+    ' Excelファイルを開く
+    Set wb = excelApp.Workbooks.Open(sourceExcelPath)
+    On Error Resume Next
+    Set ws = wb.Sheets(SHEET_NAME) ' IP_Listシートを対象
+    If ws Is Nothing Then
+        msg = "エラー: シート '" & SHEET_NAME & "' が見つかりません。"
+        MsgBox msg, vbCritical, "エラー"
+        GoTo Cleanup
+    End If
+    On Error GoTo ErrorHandler
+
+    ' D列（2行目以降）からユニット名を検索
+    targetRow = 0
+    For i = 2 To ws.Cells(ws.Rows.Count, 4).End(-4162).Row ' xlUp、D列
+        If Trim(ws.Cells(i, 4).Value) = unitName Then
+            targetRow = i
+            Exit For
+        End If
+    Next i
+
+    If targetRow = 0 Then
+        msg = "エラー: D列（2行目以降）にユニット名 '" & unitName & "' が見つかりません。"
+        MsgBox msg, vbCritical, "エラー"
+        GoTo Cleanup
+    End If
+
+    ' 対応するG列の行番号を計算（D列i行目→G列は20行目以降）
+    If targetRow < 20 Then
+        msg = "エラー: ユニット名 '" & unitName & "' の行（" & targetRow & "）はG列20行目未満です。"
+        MsgBox msg, vbCritical, "エラー"
+        GoTo Cleanup
+    End If
+
+    ' G列の対象行のパスワードを取得
+    excelPassword = Trim(ws.Cells(targetRow, 7).Value) ' G列（7列目）
+
+    ' 空欄チェック
+    If excelPassword = "" Then
+        msg = "エラー: G列" & targetRow & "行目は空欄です。"
+        MsgBox msg, vbCritical, "エラー"
+        GoTo Cleanup
+    End If
+
+    ' パスワード比較と更新
+    updateLog = "" ' 更新ログ初期化
+    If excelPassword <> textPassword Then
+        ws.Cells(targetRow, 7).Value = textPassword
+        updateLog = updateLog & "G列" & targetRow & "行目（" & unitName & "）: " & excelPassword & " → " & textPassword & vbCrLf
+    End If
+
+    ' 更新があれば保存
+    If updateLog <> "" Then
+        wb.Save
+    End If
+
+    ' 更新結果の表示
+    If updateLog <> "" Then
+        msg = "以下の行を更新しました:" & vbCrLf & vbCrLf & updateLog
+        MsgBox msg, vbInformation, "パスワード更新完了"
+    Else
+        msg = "更新はありませんでした。"
+        MsgBox msg, vbInformation, "パスワード更新完了"
+    End If
+
+Cleanup:
+    ' リソース解放
+    If Not wb Is Nothing Then wb.Close SaveChanges:=False
+    Set ws = Nothing
+    Set wb = Nothing
+    Set fso = Nothing
+    Exit Sub
+
+ErrorHandler:
+    msg = "処理中にエラーが発生しました。" & vbCrLf & _
+          "エラー番号: " & Err.Number & vbCrLf & _
+          "エラー内容: " & Err.Description
+    MsgBox msg, vbCritical, "エラー"
+    GoTo Cleanup
+End Sub
+
