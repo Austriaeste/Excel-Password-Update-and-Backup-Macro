@@ -1,0 +1,47 @@
+Option Explicit
+
+'----------------------------------------------------------------------------------
+' マクロ: ログインツールを開く
+' 説明: ログインツール.xlsmを開く、単体で動作可能
+'----------------------------------------------------------------------------------
+Sub OpenLoginTool()
+    Dim fso As Object
+    Dim excelApp As Object
+    Dim wb As Object
+    Dim loginToolPath As String
+    Dim msg As String
+    Const SOURCE_FOLDER_PATH As String = "C:\Users\austr\OneDrive\デスクトップ\password\" ' ソースフォルダパス
+    Const LOGIN_TOOL_FILE_NAME As String = "ログインツール.xlsm" ' ログインツールファイル名
+
+    ' エラーハンドリングの開始
+    On Error GoTo ErrorHandler
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set excelApp = Application ' 現在のExcelアプリケーションを使用
+
+    ' パスの組み立て
+    loginToolPath = SOURCE_FOLDER_PATH & LOGIN_TOOL_FILE_NAME
+
+    ' ファイルの存在チェック
+    If Not fso.FileExists(loginToolPath) Then
+        msg = "エラー: ログインツールファイルが見つかりません。" & vbCrLf & loginToolPath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    ' ログインツールを開く
+    Set wb = excelApp.Workbooks.Open(loginToolPath)
+    MsgBox "ログインツールを開きました: " & loginToolPath, vbInformation, "完了"
+
+Cleanup:
+    Set wb = Nothing
+    Set fso = Nothing
+    Exit Sub
+
+ErrorHandler:
+    msg = "処理中にエラーが発生しました。" & vbCrLf & _
+          "エラー番号: " & Err.Number & vbCrLf & _
+          "エラー内容: " & Err.Description
+    MsgBox msg, vbCritical, "エラー"
+    GoTo Cleanup
+End Sub
