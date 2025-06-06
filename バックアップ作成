@@ -1,0 +1,153 @@
+Option Explicit
+
+'----------------------------------------------------------------------------------
+' 設定: 変更が必要なパスやファイル名をここで定義
+'----------------------------------------------------------------------------------
+Const SOURCE_FILE_NAME As String = "sample.xlsx" ' バックアップ対象のファイル名
+Const SOURCE_FOLDER_PATH As String = "C:\Users\austr\OneDrive\デスクトップ\password\" ' ソースファイルがあるフォルダパス
+Const TEMP_FOLDER_NAME As String = "temp_backup" ' 一時フォルダ名（ダウンロードフォルダ内に作成）
+Const FINAL_TARGET_FOLDER_NAME As String = "backup" ' 最終バックアップ先のベースフォルダ名（ソースフォルダ配下）
+
+'----------------------------------------------------------------------------------
+' メイン処理: sample.xlsxを日付フォルダにバックアップ
+'----------------------------------------------------------------------------------
+Sub BackupSampleExcel()
+    Dim fso As Object
+    Dim sourcePath As String
+    Dim tempBasePath As String
+    Dim finalTargetPath As String
+    Dim tempTargetPath As String
+    Dim currentDate As String
+    Dim userProfile As String
+    Dim msg As String
+
+    ' エラーハンドリングの開始
+    On Error GoTo ErrorHandler
+
+    ' 現在の日付をYYYYMMDD形式で取得
+    currentDate = Format(Date, "YYYYMMDD")
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' 環境変数からユーザープロファイルを取得
+    userProfile = Environ("USERPROFILE")
+
+    ' パスの組み立て
+    sourcePath = SOURCE_FOLDER_PATH & SOURCE_FILE_NAME
+    tempBasePath = userProfile & "\Downloads\" & TEMP_FOLDER_NAME
+    finalTargetPath = SOURCE_FOLDER_PATH & FINAL_TARGET_FOLDER_NAME & "\" & currentDate
+
+    ' 処理開始メッセージ
+    msg = "処理を開始します..." & vbCrLf & vbCrLf & _
+          "ソースファイル: " & sourcePath & vbCrLf & _
+          "最終格納先: " & finalTargetPath
+    MsgBox msg, vbInformation, "処理開始"
+
+    ' 前提条件の確認: ソースファイルの存在チェック
+    If Not fso.FileExists(sourcePath) Then
+        msg = "エラー: ソースファイルが見つかりません。" & vbCrLf & sourcePath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    ' 一時フォルダの初期化と作成
+    If fso.FolderExists(tempBasePath) Then
+        fso.DeleteFolder tempBasePath, True
+    End If
+    If Not CreateFolderRecursive(tempBasePath) Then
+        msg = "エラー: 一時フォルダの作成に失敗しました: " & tempBasePath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    ' ファイルコピー（一時フォルダへ）
+    tempTargetPath = tempBasePath & "\" & SOURCE_FILE_NAME
+    fso.CopyFile sourcePath, tempTargetPath, True
+    If Not fso.FileExists(tempTargetPath) Then
+        msg = "エラー: 一時フォルダへのコピーに失敗しました: " & tempTargetPath
+        MsgBox msg, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    ' 最終格納先フォルダの作成
+    If Not CreateFolderRecursive(finalTargetPath) Then
+        msg = "エラー: 最終格納先フォルダの作成に失敗しました: " & finalTargetPath
+        MsgBox msg, vbCritical, "エラー"
+        GoTo Cleanup
+    End If
+
+    ' 一時フォルダから最終格納先へコピー
+    fso.CopyFile tempTargetPath, finalTargetPath & "\" & SOURCE_FILE_NAME, True
+
+    MsgBox "バックアップが完了しました！" & vbCrLf & "保存先: " & finalTargetPath, vbInformation, "完了"
+
+Cleanup:
+    ' 一時フォルダ削除
+    If fso.FolderExists(tempBasePath) Then
+        fso.DeleteFolder tempBasePath, True
+    End If
+    Set fso = Nothing
+    Exit Sub
+
+ErrorHandler:
+    msg = "処理中にエラーが発生しました。" & vbCrLf & _
+          "エラー番号: " & Err.Number & vbCrLf & _
+          "エラー内容: " & Err.Description
+    MsgBox msg, vbCritical, "エラー"
+    Set fso = Nothing
+End Sub
+
+'----------------------------------------------------------------------------------
+' ヘルパー関数: フォルダを階層的に作成する（中間ディレクトリも自動作成）
+'----------------------------------------------------------------------------------
+Function CreateFolderRecursive(ByVal folderPath As String) As Boolean
+    Dim fso As Object
+    Dim currentPath As String
+    Dim parts As Variant
+    Dim i As Long
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    CreateFolderRecursive = False
+
+    If fso.FolderExists(folderPath) Then
+        CreateFolderRecursive = True
+        Exit Function
+    End If
+
+    parts = Split(folderPath, "\")
+
+    If InStr(folderPath, ":\") > 0 Then
+        currentPath = Left(folderPath, InStr(folderPath, ":\"))
+        i = 1
+    ElseIf Left(folderPath, 2) = "\\" Then
+        currentPath = parts(0) & "\" & parts(1)
+        i = 2
+    Else
+        currentPath = ""
+        i = 0
+    End If
+
+    For i = i To UBound(parts)
+        If currentPath = "" Then
+            currentPath = parts(i)
+        Else
+            currentPath = currentPath & "\" & parts(i)
+        End If
+
+        If Len(parts(i)) > 0 Then
+            If Not fso.FolderExists(currentPath) Then
+                On Error Resume Next
+                fso.CreateFolder currentPath
+                If Err.Number <> 0 Then
+                    Debug.Print "フォルダ作成エラー: " & currentPath & " - " & Err.Description
+                    Err.Clear
+                    Exit Function
+                End If
+                On Error GoTo 0
+            End If
+        End If
+    Next i
+
+    CreateFolderRecursive = fso.FolderExists(folderPath)
+End Function
+
