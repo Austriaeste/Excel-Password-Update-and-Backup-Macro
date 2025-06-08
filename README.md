@@ -80,6 +80,3 @@ Column G, row 25 (Kagoshima-DR): oldPass → P@ssw0rd123
 Error: Unit name 'Tokyo-DT' not found in column A (row 2 and beyond).
 Column G, row 30 (Kyoto-DV): anotherPass → P@ssw0rd123
 ```
-
-## Contact
-For issues or additional requirements, contact the developer.
