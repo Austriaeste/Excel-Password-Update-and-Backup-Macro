@@ -13,7 +13,7 @@ Const SHEET_NAME As String = "IP_List" ' 対象シート名
 
 '----------------------------------------------------------------------------------
 ' マクロ1: パスワード書き換え
-' 説明: ユニット名テキストを読み込み、D列で一致する行のG列（20行目以降）を更新
+' 説明: ユニット名テキストを全行読み込み、A列で一致する行のG列（20行目以降）を更新
 '       空欄行はスキップ、更新した行のみ最後にまとめてMsgBoxで出力
 '----------------------------------------------------------------------------------
 Sub UpdatePassword()
@@ -69,11 +69,6 @@ Sub UpdatePassword()
         Exit Sub
     End If
 
-    ' ユニット名ファイルからユニット名を取得
-    Set unitFile = fso.OpenTextFile(unitListPath, 1) ' 読み込みモード
-    unitName = Trim(unitFile.ReadLine) ' 単一行を読み込み、余白除去
-    unitFile.Close
-
     ' パスワードファイルからパスワードを取得
     Set textFile = fso.OpenTextFile(sourceTextPath, 1) ' 読み込みモード
     textPassword = Trim(textFile.ReadLine) ' 単一行を読み込み、余白除去
@@ -90,44 +85,50 @@ Sub UpdatePassword()
     End If
     On Error GoTo ErrorHandler
 
-    ' D列（2行目以降）からユニット名を検索
-    targetRow = 0
-    For i = 2 To ws.Cells(ws.Rows.Count, 4).End(-4162).Row ' xlUp、D列
-        If Trim(ws.Cells(i, 4).Value) = unitName Then
-            targetRow = i
-            Exit For
-        End If
-    Next i
-
-    If targetRow = 0 Then
-        msg = "エラー: D列（2行目以降）にユニット名 '" & unitName & "' が見つかりません。"
-        MsgBox msg, vbCritical, "エラー"
-        GoTo Cleanup
-    End If
-
-    ' 対応するG列の行番号を計算（D列i行目→G列は20行目以降）
-    If targetRow < 20 Then
-        msg = "エラー: ユニット名 '" & unitName & "' の行（" & targetRow & "）はG列20行目未満です。"
-        MsgBox msg, vbCritical, "エラー"
-        GoTo Cleanup
-    End If
-
-    ' G列の対象行のパスワードを取得
-    excelPassword = Trim(ws.Cells(targetRow, 7).Value) ' G列（7列目）
-
-    ' 空欄チェック
-    If excelPassword = "" Then
-        msg = "エラー: G列" & targetRow & "行目は空欄です。"
-        MsgBox msg, vbCritical, "エラー"
-        GoTo Cleanup
-    End If
-
-    ' パスワード比較と更新
+    ' ユニット名ファイルからユニット名を全行読み込み
+    Set unitFile = fso.OpenTextFile(unitListPath, 1) ' 読み込みモード
     updateLog = "" ' 更新ログ初期化
-    If excelPassword <> textPassword Then
-        ws.Cells(targetRow, 7).Value = textPassword
-        updateLog = updateLog & "G列" & targetRow & "行目（" & unitName & "）: " & excelPassword & " → " & textPassword & vbCrLf
-    End If
+    Do Until unitFile.AtEndOfStream
+        unitName = Trim(unitFile.ReadLine) ' 1行ずつ読み込み、余白除去
+        If unitName <> "" Then ' 空行をスキップ
+            ' A列（2行目以降）からユニット名を検索
+            targetRow = 0
+            For i = 2 To ws.Cells(ws.Rows.Count, 1).End(-4162).Row ' xlUp、A列
+                If Trim(ws.Cells(i, 1).Value) = unitName Then
+                    targetRow = i
+                    Exit For
+                End If
+            Next i
+
+            If targetRow = 0 Then
+                updateLog = updateLog & "エラー: A列（2行目以降）にユニット名 '" & unitName & "' が見つかりません。" & vbCrLf
+                GoTo NextUnit
+            End If
+
+            ' 対応するG列の行番号を計算（A列i行目→G列は20行目以降）
+            If targetRow < 20 Then
+                updateLog = updateLog & "エラー: ユニット名 '" & unitName & "' の行（" & targetRow & "）はG列20行目未満です。" & vbCrLf
+                GoTo NextUnit
+            End If
+
+            ' G列の対象行のパスワードを取得
+            excelPassword = Trim(ws.Cells(targetRow, 7).Value) ' G列（7列目）
+
+            ' 空欄チェック
+            If excelPassword = "" Then
+                updateLog = updateLog & "エラー: G列" & targetRow & "行目（" & unitName & "）は空欄です。" & vbCrLf
+                GoTo NextUnit
+            End If
+
+            ' パスワード比較と更新
+            If excelPassword <> textPassword Then
+                ws.Cells(targetRow, 7).Value = textPassword
+                updateLog = updateLog & "G列" & targetRow & "行目（" & unitName & "）: " & excelPassword & " → " & textPassword & vbCrLf
+            End If
+        End If
+NextUnit:
+    Loop
+    unitFile.Close
 
     ' 更新があれば保存
     If updateLog <> "" Then
@@ -136,7 +137,7 @@ Sub UpdatePassword()
 
     ' 更新結果の表示
     If updateLog <> "" Then
-        msg = "以下の行を更新しました:" & vbCrLf & vbCrLf & updateLog
+        msg = "以下の結果となりました:" & vbCrLf & vbCrLf & updateLog
         MsgBox msg, vbInformation, "パスワード更新完了"
     Else
         msg = "更新はありませんでした。"
@@ -158,4 +159,3 @@ ErrorHandler:
     MsgBox msg, vbCritical, "エラー"
     GoTo Cleanup
 End Sub
-
